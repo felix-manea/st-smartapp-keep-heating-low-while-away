@@ -15,95 +15,85 @@
  *  Author: Felix Manea
  */
 definition(
-    name: "Keep heating low while away",
-    namespace: "smartthings",
-    author: "SmartThings",
-    description: "Monitor the temperature and when it drops below your setting get a text and/or turn on a heater or additional appliance.",
-    category: "Convenience",
-    iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo-switch.png",
-    iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo-switch@2x.png",
-    pausable: true
+        name: "Keep heating low while away",
+        namespace: "smartthings",
+        author: "SmartThings",
+        description: "Monitor the temperature and when it drops below your setting get a text and/or turn on a heater or additional appliance.",
+        category: "Convenience",
+        iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo-switch.png",
+        iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo-switch@2x.png",
+        pausable: true
 )
 
 preferences {
-	section("Devices") {
-		input "presenceSensor", "capability.presenceSensor", title: "Presence sensor(s):", multiple: true
-		input "temperatureSensor", "capability.temperatureMeasurement", title: "Temperature sensor:"
-		input "heaterSwitch", "capability.switch", title: "Heater switch:"
-	}
-	section("Settings") {
-		input "temperatureMin", "number", title: "Turn on when temperature under:"
-		input "temperatureMax", "number", title: "Turn off when temperature over:"
-	}
-    section( "Notifications" ) {
+    section("Devices") {
+        input "presenceSensor", "capability.presenceSensor", title: "Presence sensor(s):", multiple: true
+        input "temperatureSensor", "capability.temperatureMeasurement", title: "Temperature sensor:"
+        input "heaterSwitch", "capability.switch", title: "Heater switch:"
+    }
+    section("Settings") {
+        input "temperatureMin", "number", title: "Turn on when temperature under:"
+        input "temperatureMax", "number", title: "Turn off when temperature over:"
+    }
+    section("Notifications") {
         input "sendPushMessage", "enum", title: "Send a push notification?", options: ["Yes", "No"], defaultValue: "No"
     }
 }
 
 def installed() {
-	subscribe(temperatureSensor, "temperature", temperatureHandler)
-	subscribe(presenceSensor, "presence", presenceHandler)
+    subscribe(temperatureSensor, "temperature", temperatureHandler)
+    subscribe(presenceSensor, "presence", presenceHandler)
 }
 
 def updated() {
-	unsubscribe()
-	subscribe(temperatureSensor, "temperature", temperatureHandler)
-	subscribe(presenceSensor, "presence", presenceHandler)
+    unsubscribe()
+    subscribe(temperatureSensor, "temperature", temperatureHandler)
+    subscribe(presenceSensor, "presence", presenceHandler)
 }
 
 def temperatureHandler(evt) {
-	// log.trace "temp: ${evt.value}, evt: ${evt}, temperatureMin: ${temperatureMin}, temperatureMax: ${temperatureMax}"
+    def tooCold = temperatureMin
+    def tooHot = temperatureMax
+    def presenceState = presenceSensor.currentState("presence")
+    def tempScale = location.temperatureScale ?: "C"
 
-	def tooCold = temperatureMin
-	def tooHot = temperatureMax
-	def mySwitch = heaterSwitch
-    def switchState = heaterSwitch.currentState("switch")
-	def presenceState = presenceSensor.currentState("presence")
-
-	// log.trace "heaterSwitch: ${switchState.value}, presenceSensor: ${presenceState.value}"
-
-	// Check if any presence sensor.
+    // Check if any presence sensor.
     if (presenceState.value.find { it == 'present' } == 'present') {
-		log.debug "Users present, turning heater back on and exit"
+        log.debug "Users present, turning heater back on and exit"
 
-        mySwitch.on()
+        heaterSwitch.on()
 
-		return;
+        return
     }
 
-	log.debug "No users present, checking states"
+    log.debug "No users present, checking states"
 
-	// If too cold.
-	if (evt.doubleValue <= tooCold) {
-        log.debug "Temperature dropped below $tooCold, activating $mySwitch"
-        def tempScale = location.temperatureScale ?: "C"
-        mySwitch.on()
-        send("${temperatureSensor.displayName} is too cold (temperature: ${evt.value}${evt.unit?:tempScale}), turning heating on (if not already on).")
-	}
+    // If too cold.
+    if (evt.doubleValue <= tooCold) {
+        log.debug "Temperature dropped below $tooCold, activating $heaterSwitch"
+        heaterSwitch.on()
+        send("${temperatureSensor.displayName} is too cold (temperature: ${evt.value}${evt.unit ?: tempScale}), turning heating on (if not already on).")
+    }
 
-	// If too hot.
-	if (evt.doubleValue >= tooHot) {
-        log.debug "Temperature dropped below $tooCold, activating $mySwitch"
-        def tempScale = location.temperatureScale ?: "C"
-        mySwitch.off()
-        send("${temperatureSensor.displayName} is too hot (temperature: ${evt.value}${evt.unit?:tempScale}), turning heating off.")
-	}
+    // If too hot.
+    if (evt.doubleValue >= tooHot) {
+        log.debug "Temperature dropped below $tooCold, activating $heaterSwitch"
+        heaterSwitch.off()
+        send("${temperatureSensor.displayName} is too hot (temperature: ${evt.value}${evt.unit ?: tempScale}), turning heating off.")
+    }
 }
 
 def presenceHandler(evt) {
-	def mySwitch = heaterSwitch
-
     log.debug "presenceHandler(${evt.id}, ${evt.value})"
 
     // Check if presence sensor arrived or left.
-	if (evt.value == "present") {
-		log.debug "${evt.id} has arrived at the ${location}, turning heater on"
-        mySwitch.on()
-	}
+    if (evt.value == "present") {
+        log.debug "${evt.id} has arrived at the ${location}, turning heater on"
+        heaterSwitch.on()
+    }
 
     // If not present do nothing until temperature gets modified.
 }
-
 
 private send(msg) {
     if (sendPushMessage == "Yes") {
